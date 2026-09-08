@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3-Tier Task Manager</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f4f9; }
+        h1 { color: #333; }
+        .container { max-width: 600px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        input, button { padding: 10px; margin: 5px 0; width: 95%; }
+        button { background-color: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        ul { list-style-type: none; padding: 0; }
+        li { background: #eee; margin: 5px 0; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Task Manager (3-Tier App)</h1>
+        <div id="status">Connecting to backend...</div>
+        <hr>
+        <h3>Add New Task</h3>
+        <input type="text" id="taskTitle" placeholder="Task Title">
+        <input type="text" id="taskDesc" placeholder="Task Description">
+        <button onclick="addTask()">Add Task</button>
+        
+        <h3>Current Tasks</h3>
+        <ul id="taskList"></ul>
+    </div>
+
+    <script>
+        // API Base URL - Configurable for local or production deployment
+        const API_URL = window.env?.API_URL || "http://localhost:8000";
+
+        async function checkHealth() {
+            try {
+                const res = await fetch(`${API_URL}/health`);
+                const data = await res.json();
+                document.getElementById('status').innerHTML = `<strong>Backend Status:</strong> ${data.status} | <strong>Database:</strong> ${data.database}`;
+            } catch (err) {
+                document.getElementById('status').innerHTML = `<span style="color:red;">Failed to connect to backend at ${API_URL}</span>`;
+            }
+        }
+
+        async function fetchTasks() {
+            try {
+                const res = await fetch(`${API_URL}/api/tasks`);
+                const tasks = await res.json();
+                const list = document.getElementById('taskList');
+                list.innerHTML = '';
+                tasks.forEach(t => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<strong>${t.title}</strong>: ${t.description || 'No description'}`;
+                    list.appendChild(li);
+                });
+            } catch (err) {
+                console.error("Error fetching tasks:", err);
+            }
+        }
+
+        async function addTask() {
+            const title = document.getElementById('taskTitle').value;
+            const description = document.getElementById('taskDesc').value;
+            if (!title) return alert("Please enter a title");
+
+            await fetch(`${API_URL}/api/tasks`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, description })
+            });
+
+            document.getElementById('taskTitle').value = '';
+            document.getElementById('taskDesc').value = '';
+            fetchTasks();
+        }
+
+        checkHealth();
+        fetchTasks();
+    </script>
+</body>
+</html>
