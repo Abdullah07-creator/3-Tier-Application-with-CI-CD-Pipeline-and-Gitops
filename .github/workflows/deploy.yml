@@ -5,56 +5,93 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-  build-and-deploy:
-    name: "Build, Scan, Push & Deploy"
+  build-scan-and-deploy:
+    name: "Build, Scan & Deploy to EKS"
     runs-on: ubuntu-latest
 
     steps:
-# Checkout repository source code
+      # 1. Checkout repository code
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-#Configure AWS CLI Credentials
+      # 2. Configure AWS Credentials
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-#Log in to Amazon ECR
+
+      # 3. Log in to Amazon ECR
       - name: Log in to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-#Build, Tag, and Push Backend Image to ECR
-      - name: Build and Push Backend Image
+      # 4. SonarQube SAST Analysis (Source Code Security)
+      - name: SonarQube Scan (SAST)
+        uses: SonarSource/sonarqube-scan-action@v4
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        continue-on-error: true
+
+      # 5. Build Local Docker Images for Scanning
+      - name: Build Docker Images
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -t $ECR_REGISTRY/three-tier-backend:$IMAGE_TAG ./backend
-          docker build -t $ECR_REGISTRY/three-tier-backend:v1 ./backend
-          docker push $ECR_REGISTRY/three-tier-backend:$IMAGE_TAG
-          docker push $ECR_REGISTRY/three-tier-backend:v1
+          docker build -t $ECR_REGISTRY/three-tier-frontend:$IMAGE_TAG ./frontend
 
-# Build, Tag, and Push Frontend Image to ECR
-      - name: Build and Push Frontend Image
+      # 6. Trivy Security Scan — Backend Container
+      - name: Run Trivy Vulnerability Scanner (Backend)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ steps.login-ecr.outputs.registry }}/three-tier-backend:${{ github.sha }}'
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      # 7. Trivy Security Scan — Frontend Container
+      - name: Run Trivy Vulnerability Scanner (Frontend)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ steps.login-ecr.outputs.registry }}/three-tier-frontend:${{ github.sha }}'
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      # 8. Push Container Images to Amazon ECR
+      - name: Push Container Images to ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/three-tier-frontend:$IMAGE_TAG ./frontend
-          docker build -t $ECR_REGISTRY/three-tier-frontend:v1 ./frontend
+          docker tag $ECR_REGISTRY/three-tier-backend:$IMAGE_TAG $ECR_REGISTRY/three-tier-backend:v1
+          docker tag $ECR_REGISTRY/three-tier-frontend:$IMAGE_TAG $ECR_REGISTRY/three-tier-frontend:v1
+          docker push $ECR_REGISTRY/three-tier-backend:$IMAGE_TAG
+          docker push $ECR_REGISTRY/three-tier-backend:v1
           docker push $ECR_REGISTRY/three-tier-frontend:$IMAGE_TAG
           docker push $ECR_REGISTRY/three-tier-frontend:v1
 
-#Update Kubeconfig context for EKS
+      # 9. Update Local Kubeconfig Context for EKS
       - name: Update Kubeconfig Context
         run: |
           aws eks update-kubeconfig --region us-east-1 --name three-tier-eks-cluster
 
-#Deploy / Upgrade Helm Chart on Amazon EKS
+      # 10. Deploy / Upgrade Helm Chart on Amazon EKS
       - name: Deploy Helm Chart to EKS
         run: |
           helm upgrade --install three-tier-release ./helm/three-tier-app \
