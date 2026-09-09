@@ -18,3 +18,10 @@ venv/
 # Database files
 *.sqlite3
 *.log
+
+
+# Ignore Terraform local plugins and cache
+**/.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl

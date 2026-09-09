@@ -1,0 +1,23 @@
+global:
+  awsAccountId: "672027759360"
+  region: "us-east-1"
+
+backend:
+  replicaCount: 2
+  image:
+    repository: "three-tier-backend"
+    tag: "v1"
+  port: 8000
+
+frontend:
+  replicaCount: 1
+  image:
+    repository: "three-tier-frontend"
+    tag: "v1"
+  port: 80
+
+postgres:
+  dbName: "taskdb"
+  user: "postgres"
+  password: "postgrespassword"
+  port: 5432
