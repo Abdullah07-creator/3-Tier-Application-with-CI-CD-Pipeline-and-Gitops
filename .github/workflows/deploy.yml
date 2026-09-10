@@ -40,7 +40,10 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL || 'https://sonarcloud.io' }}
-        continue-on-error: true
+        with:
+          args: >
+            -Dsonar.organization=YOUR_SONARCLOUD_ORGANIZATION_KEY
+            -Dsonar.projectKey=three-tier-devops-app
 
       # 5. Build Local Docker Images for Scanning
       - name: Build Docker Images
